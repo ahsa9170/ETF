@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="DE ETF Calc", layout="wide")
-st.title("🇩🇪 German ETF Tax & Growth Simulator")
+st.title("🇩🇪 German ETF Tax & Growth")
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -26,15 +26,79 @@ balance = init_cap
 total_invested = init_cap
 accumulated_vorab_tax = 0
 
-# Partial exemption factor
 exemption = 0.7 if equity_etf else 1.0
-tax_rate = 0.26375  # 25% + Soli
+tax_rate = 0.26375 
 
 for m in range(1, months + 1):
-    # Track value at start of year for Vorabpauschale
     if m % 12 == 1:
         val_jan_1 = balance
     
+    balance = balance * (1 + rate/12) + monthly_save
+    total_invested += monthly_save
+    
+    if m % 12 == 0:
+        year = m // 12
+        actual_gain = balance - val_jan_1
+        basisertrag = val_jan_1 * basiszins * 0.7
+        vorab_base = max(0, min(actual_gain, basisertrag))
+        
+        taxable_vorab = max(0, (vorab_base * exemption) - allowance)
+        yearly_vorab_tax = taxable_vorab * tax_rate
+        accumulated_vorab_tax += yearly_vorab_tax
+        
+        total_profit = balance - total_invested
+        final_taxable = max(0, (total_profit * exemption) - allowance)
+        exit_tax = max(0, (final_taxable * tax_rate) - accumulated_vorab_tax)
+        
+        net_val = balance - exit_tax - accumulated_vorab_tax
+        real_val = net_val / ((1 + inflation) ** year)
+        
+        data.append({
+            "Year": year,
+            "Nominal": round(balance, 2),
+            "After Tax": round(net_val, 2),
+            "Real Value": round(real_val, 2),
+            "Invested": total_invested
+        })
+
+df = pd.DataFrame(data)
+
+# --- DISPLAY ---
+st.metric("Future Purchasing Power (Real €)", f"€{df.iloc[-1]['Real Value']:,.2f}")
+
+fig = go.Figure()
+
+# The FIX: Use go.Scatter with fill='tozeroy' instead of add_area
+fig.add_trace(go.Scatter(
+    x=df["Year"], 
+    y=df["Invested"], 
+    name="Your Total Deposits", 
+    fill='tozeroy', 
+    line=dict(color='gray')
+))
+
+fig.add_trace(go.Scatter(
+    x=df["Year"], 
+    y=df["Nominal"], 
+    name="Nominal Balance (Market Value)", 
+    line=dict(color='blue')
+))
+
+fig.add_trace(go.Scatter(
+    x=df["Year"], 
+    y=df["Real Value"], 
+    name="Real Value (Today's €)", 
+    line=dict(dash='dash', color='orange')
+))
+
+fig.update_layout(
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    margin=dict(l=10, r=10, t=10, b=10)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+st.dataframe(df)
+
     # Growth
     balance = balance * (1 + rate/12) + monthly_save
     total_invested += monthly_save
