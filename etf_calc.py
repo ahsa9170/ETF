@@ -14,7 +14,6 @@ rate = st.sidebar.slider("Return (%)", 0.0, 15.0, 9.0) / 100
 inflation = st.sidebar.slider("Inflation (%)", 0.0, 5.0, 2.0) / 100
 
 st.sidebar.header("Dynamics")
-# NEW: Slider to increase your contribution every year
 dynamics = st.sidebar.slider("Annual Savings Increase (%)", 0.0, 5.0, 2.0) / 100
 
 st.sidebar.header("Tax Settings")
@@ -33,16 +32,12 @@ exemption = 0.7 if equity_etf else 1.0
 tax_rate = 0.26375 
 
 for m in range(1, months + 1):
-    # Every 12 months, increase the monthly saving amount
     if m > 1 and m % 12 == 1:
         current_monthly_save = current_monthly_save * (1 + dynamics)
-        
     if m % 12 == 1:
         val_jan_1 = balance
-    
     balance = balance * (1 + rate/12) + current_monthly_save
     total_invested += current_monthly_save
-    
     if m % 12 == 0:
         year = m // 12
         actual_gain = balance - val_jan_1
@@ -56,19 +51,22 @@ for m in range(1, months + 1):
         exit_tax = max(0, (final_taxable * tax_rate) - accumulated_vorab_tax)
         net_val = balance - exit_tax - accumulated_vorab_tax
         real_val = net_val / ((1 + inflation) ** year)
-        
-        data.append({
-            "Year": year, 
-            "Nominal": round(balance, 2), 
-            "Real Value": round(real_val, 2), 
-            "Invested": total_invested,
-            "Monthly Rate": round(current_monthly_save, 2)
-        })
+        data.append({"Year": year, "Nominal": round(balance, 2), "Real Value": round(real_val, 2), "Invested": total_invested, "Monthly Rate": round(current_monthly_save, 2)})
 
 # 3. OUTPUT
 df = pd.DataFrame(data)
+final_nominal = df.iloc[-1]['Nominal']
+
+# CALCULATE SAFE WITHDRAWAL (SWR)
+# Formula: (Balance * 4% / 12 months) * (1 - Effective German Tax)
+effective_tax = tax_rate * exemption
+monthly_withdrawal_net = (final_nominal * 0.04 / 12) * (1 - effective_tax)
+
 st.metric("Future Purchasing Power (Real €)", f"€{df.iloc[-1]['Real Value']:,.2f}")
 st.write(f"Your monthly saving in year {years} will be: **€{df.iloc[-1]['Monthly Rate']:.2f}**")
+
+# THE NEW LINE:
+st.info(f"💡 Based on a safe 4% withdrawal rate, you can withdraw **€{monthly_withdrawal_net:,.2f} net per month** forever without exhausting your capital (Nominal Value).")
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=df["Year"], y=df["Invested"], name="Total Deposits", fill='tozeroy', line=dict(color='lightgrey')))
